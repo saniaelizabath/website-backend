@@ -18,7 +18,8 @@ from database import (
     employees_collection,
     attendance_collection,
     employee_links_collection,
-    admin_links_collection
+    admin_links_collection,
+    employee_custom_links_collection
 )
 from location_utils import is_location_allowed
 
@@ -1113,6 +1114,106 @@ async def update_single_link(
         "link_key": link_key,
         "url": url
     }
+
+
+# =========================
+# EMPLOYEE CUSTOM LINKS APIs (admin-created custom links for employees)
+# =========================
+
+@app.get("/employee-custom-links/{employee_id}")
+async def get_employee_custom_links(employee_id: int):
+    """Get all custom links for a specific employee"""
+    links_list = []
+    async for link in employee_custom_links_collection.find({"employee_id": employee_id}).sort("created_at", -1):
+        link["_id"] = str(link["_id"])
+        links_list.append(link)
+    return links_list
+
+
+@app.post("/employee-custom-links")
+async def create_employee_custom_link(
+    employee_id: int = Form(...),
+    name: str = Form(...),
+    url: str = Form(...)
+):
+    """Create a new custom link for an employee"""
+    link_data = {
+        "employee_id": employee_id,
+        "name": name,
+        "url": url,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    result = await employee_custom_links_collection.insert_one(link_data)
+    link_data["_id"] = str(result.inserted_id)
+    
+    return {
+        "message": "Custom link created successfully",
+        "link": link_data
+    }
+
+
+@app.get("/employee-custom-links/link/{link_id}")
+async def get_employee_custom_link(link_id: str):
+    """Get a single custom link by ID"""
+    try:
+        link = await employee_custom_links_collection.find_one({"_id": ObjectId(link_id)})
+        if not link:
+            raise HTTPException(status_code=404, detail="Link not found")
+        
+        link["_id"] = str(link["_id"])
+        return link
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid link ID: {str(e)}")
+
+
+@app.put("/employee-custom-links/{link_id}")
+async def update_employee_custom_link(
+    link_id: str,
+    name: str = Form(...),
+    url: str = Form(...)
+):
+    """Update an existing custom link"""
+    try:
+        update_data = {
+            "name": name,
+            "url": url,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = await employee_custom_links_collection.update_one(
+            {"_id": ObjectId(link_id)},
+            {"$set": update_data}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Link not found")
+        
+        return {
+            "message": "Custom link updated successfully",
+            "link_id": link_id
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error updating link: {str(e)}")
+
+
+@app.delete("/employee-custom-links/{link_id}")
+async def delete_employee_custom_link(link_id: str):
+    """Delete a custom link"""
+    try:
+        result = await employee_custom_links_collection.delete_one({"_id": ObjectId(link_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Link not found")
+        
+        return {
+            "message": "Custom link deleted successfully",
+            "deleted_id": link_id
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error deleting link: {str(e)}")
 
 
 # =========================

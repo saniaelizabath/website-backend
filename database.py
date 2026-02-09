@@ -31,7 +31,8 @@ jobs_collection = database.get_collection("jobs")
 employees_collection = database.get_collection("employees")
 attendance_collection = database.get_collection("attendance")
 employee_links_collection = database.get_collection("employee_links")
-admin_links_collection = database.get_collection("admin_links")  # ← ADDED THIS
+admin_links_collection = database.get_collection("admin_links")
+employee_custom_links_collection = database.get_collection("employee_custom_links")  # ← For admin-created custom links per employee
 
 # Helper function to convert MongoDB document to dict
 def document_helper(document) -> dict:
