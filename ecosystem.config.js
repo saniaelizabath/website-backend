@@ -1,15 +1,11 @@
 module.exports = {
   apps: [{
     name: 'magmarine-backend',
-    script: 'venv/bin/uvicorn',
-    args: 'main:app --host 0.0.0.0 --port 8000',
+    script: './start.sh',
     cwd: '/var/www/magmarine/backend',
     instances: 1,
     autorestart: true,
     watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production'
-    }
+    max_memory_restart: '1G'
   }]
 }
