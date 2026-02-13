@@ -19,17 +19,17 @@ ALLOWED_LOCATIONS = [
     # },
     {
         "name": "Location 1",
-        "latitude":13.309315391539295,
-        "longitude":80.34559857791152
+        "latitude":13.3090857,
+        "longitude":80.3458292
     },
     {
         "name": "Location 2",
-        "latitude": 9.992306487982402,  
-        "longitude": 76.2794340490761
+        "latitude": 9.9921134,  
+        "longitude": 76.2795661
     }
 ]
 
-ALLOWED_RADIUS_METERS = 100  # 100 meters radius
+ALLOWED_RADIUS_METERS = 2000  # 2000 meters radius
 
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
