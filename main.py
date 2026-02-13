@@ -5,6 +5,7 @@ import shutil
 import os
 from typing import Optional
 from datetime import datetime, date, timedelta
+import pytz
 import uuid
 
 from bson import ObjectId
@@ -28,6 +29,9 @@ from email.message import EmailMessage
 
 # Load environment variables
 load_dotenv()
+
+# Indian Standard Time timezone
+IST = pytz.timezone('Asia/Kolkata')
 
 # ----------------------------
 # FastAPI App
@@ -627,7 +631,7 @@ async def mark_attendance_in(
         attendance_data = {
             "employee_id": employee_id,
             "date": today.isoformat(),
-            "in_time": datetime.now().isoformat(),
+            "in_time": datetime.now(IST).isoformat(),
             "status": "present"
         }
         await attendance_collection.insert_one(attendance_data)
@@ -635,7 +639,7 @@ async def mark_attendance_in(
         await attendance_collection.update_one(
             {"_id": existing_attendance["_id"]},
             {"$set": {
-                "in_time": datetime.now().isoformat(),
+                "in_time": datetime.now(IST).isoformat(),
                 "status": "present"
             }}
         )
@@ -643,7 +647,7 @@ async def mark_attendance_in(
     return {
         "message": "Attendance marked successfully",
         "location": location_check["location_name"],
-        "time": datetime.now().strftime("%I:%M %p")
+        "time": datetime.now(IST).strftime("%I:%M %p")
     }
 
 
@@ -683,7 +687,7 @@ async def mark_attendance_out(
         raise HTTPException(status_code=400, detail="Exit time already marked for today")
     
     # Calculate hours worked
-    out_time = datetime.now()
+    out_time = datetime.now(IST)
     in_time = datetime.fromisoformat(attendance["in_time"])
     hours_worked = calculate_hours(attendance["in_time"], out_time.isoformat())
     
