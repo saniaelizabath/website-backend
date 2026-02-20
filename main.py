@@ -536,7 +536,7 @@ async def employee_login(
     if employee["password_hash"] != password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    login_time = datetime.utcnow().isoformat()
+    login_time = datetime.now(IST).isoformat()
     session_doc = {
         "employee_id": employee["id"],
         "employee_name": employee["name"],
@@ -566,7 +566,7 @@ async def employee_logout(
     session_id: Optional[str] = Form(None)
 ):
     """Employee logout - mark the active session as logged out."""
-    logout_time = datetime.utcnow().isoformat()
+    logout_time = datetime.now(IST).isoformat()
 
     if session_id:
         try:
