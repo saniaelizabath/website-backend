@@ -640,6 +640,37 @@ async def get_employee_sessions(employee_id: Optional[int] = None, limit: int = 
     return sessions
 
 
+@app.delete("/employee-sessions/employee/{employee_id}")
+async def delete_employee_sessions(employee_id: int, date: Optional[str] = None):
+    """Delete sessions for an employee. If date is provided, delete only that day's logs."""
+    query = {"employee_id": employee_id}
+    if date:
+        query["login_time"] = {"$regex": f"^{date}"}
+
+    result = await employee_sessions_collection.delete_many(query)
+    return {
+        "message": "Employee session logs deleted",
+        "employee_id": employee_id,
+        "date": date,
+        "deleted_count": result.deleted_count
+    }
+
+
+@app.delete("/employee-sessions/{session_id}")
+async def delete_employee_session(session_id: str):
+    """Delete a single session log record."""
+    try:
+        object_id = ObjectId(session_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    result = await employee_sessions_collection.delete_one({"_id": object_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Session log not found")
+
+    return {"message": "Session log deleted successfully", "deleted_id": session_id}
+
+
 @app.post("/employee/forgot-password")
 async def employee_forgot_password(employee_id: int = Form(...)):
     """Send password reset email to employee"""
