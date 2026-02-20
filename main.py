@@ -20,12 +20,15 @@ from database import (
     attendance_collection,
     employee_links_collection,
     admin_links_collection,
-    employee_custom_links_collection
+    employee_custom_links_collection,
+    database
 )
 from location_utils import is_location_allowed
 
 import smtplib
 from email.message import EmailMessage
+
+employee_sessions_collection = database.get_collection("employee_sessions")
 
 # Load environment variables
 load_dotenv()
@@ -68,6 +71,8 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     os.makedirs("uploads/news", exist_ok=True)
+    await employee_sessions_collection.create_index([("employee_id", 1), ("login_time", -1)])
+    await employee_sessions_collection.create_index([("employee_id", 1), ("logout_time", 1)])
     print("✅ Uploads directory created/verified")
     print(f"✅ Frontend URL: {FRONTEND_URL}")
     print(f"✅ Allowed Origins: {ALLOWED_ORIGINS}")
@@ -207,6 +212,19 @@ def get_date_range(filter_type: str):
         return start_of_month.isoformat(), end_of_month.isoformat()
     
     return None, None
+
+
+def serialize_session(session_doc: dict):
+    """Convert session document to API-safe response shape."""
+    return {
+        "_id": str(session_doc["_id"]),
+        "employee_id": session_doc.get("employee_id"),
+        "employee_name": session_doc.get("employee_name", "Unknown"),
+        "employee_email": session_doc.get("employee_email", ""),
+        "login_time": session_doc.get("login_time"),
+        "logout_time": session_doc.get("logout_time"),
+        "status": session_doc.get("status", "active"),
+    }
 
 
 # ----------------------------
@@ -518,14 +536,139 @@ async def employee_login(
     if employee["password_hash"] != password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    login_time = datetime.utcnow().isoformat()
+    session_doc = {
+        "employee_id": employee["id"],
+        "employee_name": employee["name"],
+        "employee_email": employee["email"],
+        "login_time": login_time,
+        "logout_time": None,
+        "status": "active",
+        "created_at": login_time,
+        "updated_at": login_time,
+    }
+    session_result = await employee_sessions_collection.insert_one(session_doc)
+
     return {
         "message": "Login successful",
         "employee": {
             "id": employee["id"],
             "name": employee["name"],
             "email": employee["email"]
-        }
+        },
+        "session_id": str(session_result.inserted_id)
     }
+
+
+@app.post("/employee/logout")
+async def employee_logout(
+    employee_id: int = Form(...),
+    session_id: Optional[str] = Form(None)
+):
+    """Employee logout - mark the active session as logged out."""
+    logout_time = datetime.utcnow().isoformat()
+
+    if session_id:
+        try:
+            object_id = ObjectId(session_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid session ID")
+
+        session_doc = await employee_sessions_collection.find_one({
+            "_id": object_id,
+            "employee_id": employee_id
+        })
+        if not session_doc:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if session_doc.get("logout_time"):
+            return {
+                "message": "Session already logged out",
+                "session_id": session_id
+            }
+
+        await employee_sessions_collection.update_one(
+            {"_id": object_id},
+            {"$set": {
+                "logout_time": logout_time,
+                "status": "logged_out",
+                "updated_at": logout_time
+            }}
+        )
+        return {
+            "message": "Logout successful",
+            "session_id": session_id,
+            "logout_time": logout_time
+        }
+
+    session_doc = await employee_sessions_collection.find_one(
+        {"employee_id": employee_id, "logout_time": None},
+        sort=[("login_time", -1)]
+    )
+
+    if not session_doc:
+        return {"message": "No active session found"}
+
+    await employee_sessions_collection.update_one(
+        {"_id": session_doc["_id"]},
+        {"$set": {
+            "logout_time": logout_time,
+            "status": "logged_out",
+            "updated_at": logout_time
+        }}
+    )
+
+    return {
+        "message": "Logout successful",
+        "session_id": str(session_doc["_id"]),
+        "logout_time": logout_time
+    }
+
+
+@app.get("/employee-sessions")
+async def get_employee_sessions(employee_id: Optional[int] = None, limit: int = 200):
+    """Get employee login/logout sessions for admin dashboard."""
+    safe_limit = min(max(limit, 1), 1000)
+    query = {}
+    if employee_id is not None:
+        query["employee_id"] = employee_id
+
+    sessions = []
+    cursor = employee_sessions_collection.find(query).sort("login_time", -1).limit(safe_limit)
+    async for session in cursor:
+        sessions.append(serialize_session(session))
+    return sessions
+
+
+@app.delete("/employee-sessions/employee/{employee_id}")
+async def delete_employee_sessions(employee_id: int, date: Optional[str] = None):
+    """Delete sessions for an employee. If date is provided, delete only that day's logs."""
+    query = {"employee_id": employee_id}
+    if date:
+        query["login_time"] = {"$regex": f"^{date}"}
+
+    result = await employee_sessions_collection.delete_many(query)
+    return {
+        "message": "Employee session logs deleted",
+        "employee_id": employee_id,
+        "date": date,
+        "deleted_count": result.deleted_count
+    }
+
+
+@app.delete("/employee-sessions/{session_id}")
+async def delete_employee_session(session_id: str):
+    """Delete a single session log record."""
+    try:
+        object_id = ObjectId(session_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    result = await employee_sessions_collection.delete_one({"_id": object_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Session log not found")
+
+    return {"message": "Session log deleted successfully", "deleted_id": session_id}
 
 
 @app.post("/employee/forgot-password")
@@ -999,11 +1142,15 @@ async def delete_employee(employee_id: int):
     
     # Delete all links for this employee
     links_result = await employee_links_collection.delete_many({"employee_id": employee_id})
+
+    # Delete all session logs for this employee
+    sessions_result = await employee_sessions_collection.delete_many({"employee_id": employee_id})
     
     return {
         "message": "Employee deleted successfully",
         "attendance_records_deleted": attendance_result.deleted_count,
-        "links_deleted": links_result.deleted_count
+        "links_deleted": links_result.deleted_count,
+        "sessions_deleted": sessions_result.deleted_count
     }
 
 
