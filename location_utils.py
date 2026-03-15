@@ -26,6 +26,11 @@ ALLOWED_LOCATIONS = [
         "name": "Location 2",
         "latitude": 9.9921134,  
         "longitude": 76.2795661
+    },
+    {
+        "name": "Location 3",        
+        "latitude": 13.305249,   
+        "longitude": 80.344699 
     }
 ]
 
